@@ -59,8 +59,9 @@ impl Config {
             if link.dir == dir {
                 log::warn!("removing soft link for {}", dir);
                 for resource in link.link.iter() {
-                    log::warn!("remove soft link: {}", resource.name);
-                    utils::remove_soft_link(&resource.name);
+                    let path = Path::new(dir).join(resource.name.clone());
+                    log::warn!("remove soft link: {}", path.to_str().unwrap());
+                    utils::remove_soft_link(path.to_str().unwrap());
                 }
                 self.links.remove(index);
                 break;
@@ -105,11 +106,14 @@ impl Config {
                 }
                 None => {
                     for (dst_, res) in items.iter() {
-                        let res = res.as_str().unwrap();
+                        let res = res.as_str().unwrap_or_else(|| {
+                            log::error!("Cannot parse resource path: {}", res.to_string());
+                            panic!("Cannot parse resource path: {}, maybe you should add {} resource first", res.to_string(), dst);
+                         });
                         let resource = self.get_resource(res);
                         match resource {
                             Some(resource) => {
-                                let path = Path::new(dst).join(dst_);
+                                let path = Path::new(dir).join(dst).join(dst_);
                                 let path = path.to_str().unwrap();
                                 utils::create_soft_link(&resource.path, path);
                                 link.link.push(ResourcePair {
@@ -135,6 +139,7 @@ impl Config {
                 }
             }
         }
+        self.links.push(link);
         self.save();
     }
 

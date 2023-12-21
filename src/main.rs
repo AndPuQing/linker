@@ -17,7 +17,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// LinkStart links resources to the current directory
-    LinkStart,
+    Link,
 
     /// list soft links on current directory
     /// or on the path provided
@@ -62,7 +62,7 @@ fn main() {
         .filter_level(cli.verbose.log_level_filter())
         .init();
     match &cli.command {
-        Some(Commands::LinkStart) => {
+        Some(Commands::Link) => {
             let resource = resource::Resource::new();
             let mut config = config::Config::new();
             let current_dir = std::env::current_dir().expect("Failed to get current directory");

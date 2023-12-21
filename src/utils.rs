@@ -20,6 +20,13 @@ pub(crate) fn generate_random_string(length: usize) -> String {
 pub fn create_soft_link(src: &str, dst: &str) {
     let src = std::path::Path::new(src);
     let dst = std::path::Path::new(dst);
+    log::info!("Creating soft link: {} -> {}", src.display(), dst.display());
+
+    let dir_path = std::path::Path::new(&dst).parent().unwrap();
+    if !dir_path.exists() {
+        std::fs::create_dir_all(dir_path).expect("Failed to create directory");
+    }
+
     // platform check
     #[cfg(target_os = "windows")]
     if !dst.exists() {
