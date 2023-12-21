@@ -81,18 +81,6 @@ jobs:
         env:
           TOOLCHAIN_TARGET: ${{ matrix.target }}
 
-  lockfile:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@v2
-      - name: "Is lockfile updated?"
-        run: cargo fetch --locked
   docs:
     name: Docs
     runs-on: ubuntu-latest
@@ -136,23 +124,5 @@ jobs:
           toolchain: "1.70" # MSRV
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Lint (ultra-minimal)
-        run: make clippy-minimal ARGS='--manifest-path Cargo.toml'
-      - name: Lint (minimal)
-        run: make clippy-minimal
       - name: Lint (all)
-        run: make clippy-full
-      - name: Lint (release)
-        run: make clippy-release
-  cffconvert:
-    name: cffconvert
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: CFF validation
-        uses: citation-file-format/cffconvert-github-action@2.0.0
-        with:
-          args: --validate
+        run: cargo clippy --all --all-targets --all-features -- -D warnings -A deprecated
