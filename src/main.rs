@@ -94,7 +94,7 @@ fn main() {
         Some(Commands::Remove(name)) => match name.name {
             Some(ref _name) => {
                 let mut config = config::Config::new();
-                config.remove_resource(Some(&_name), false);
+                config.remove_resource(Some(_name), false);
             }
             None => {
                 if name.all {
@@ -105,7 +105,7 @@ fn main() {
         },
         Some(Commands::Init) => {
             let resource = resource::Resource::new();
-            if resource.resource.len() > 0 {
+            if !resource.resource.is_empty() {
                 log::info!("Resource have {} entries", resource.resource.len());
                 println!("File resource.toml exists, nothing to initialize");
             } else {

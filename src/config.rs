@@ -46,12 +46,9 @@ impl Config {
     }
 
     pub fn get_resource(&self, name: &str) -> Option<&ResourcePair> {
-        for resource in self.resources.iter() {
-            if resource.name == name {
-                return Some(resource);
-            }
-        }
-        None
+        self.resources
+            .iter()
+            .find(|&resource| resource.name == name)
     }
 
     pub fn remove_link(&mut self, dir: &str) {
@@ -108,7 +105,7 @@ impl Config {
                     for (dst_, res) in items.iter() {
                         let res = res.as_str().unwrap_or_else(|| {
                             log::error!("Cannot parse resource path: {}", res.to_string());
-                            panic!("Cannot parse resource path: {}, maybe you should add {} resource first", res.to_string(), dst);
+                            panic!("Cannot parse resource path: {}, maybe you should add {} resource first", res, dst);
                          });
                         let resource = self.get_resource(res);
                         match resource {
@@ -149,12 +146,7 @@ impl Config {
         for resource in self.resources.iter_mut() {
             if resource.name == name {
                 updated = true;
-                println!(
-                    "Resource {}: {} --> {}",
-                    name,
-                    resource.path,
-                    path.to_string()
-                );
+                println!("Resource {}: {} --> {}", name, resource.path, path);
                 resource.path = path.to_string();
                 break;
             }
