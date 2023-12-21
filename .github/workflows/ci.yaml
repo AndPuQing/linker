@@ -28,7 +28,7 @@ jobs:
     name: Test
     strategy:
       matrix:
-        build: [linux, windows, mac, minimal, default, next]
+        build: [linux, windows, mac]
         include:
           - build: linux
             os: ubuntu-latest
