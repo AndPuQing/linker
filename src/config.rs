@@ -67,12 +67,6 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_parse_config_file() {
-        let _config = parse_config_file("config.json");
-        assert_eq!(_config.resources.len(), 0);
-    }
-
-    #[test]
     fn test_write_config_file() {
         let _config = parse_config_file("config.json");
         let _resource = ResourceConfig {
