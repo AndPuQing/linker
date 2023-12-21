@@ -4,9 +4,11 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io::ErrorKind, path::Path};
 
+use super::utils;
+
 /// Represents a resource configuration.
-#[derive(Serialize, Deserialize)]
-pub struct ResourceConfig {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ResourcePair {
     pub(crate) name: String,
     pub(crate) path: String,
 }
@@ -14,71 +16,193 @@ pub struct ResourceConfig {
 /// Represents the overall configuration.
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub(crate) resources: Vec<ResourceConfig>,
+    pub(crate) resources: Vec<ResourcePair>,
+    pub(crate) links: Vec<LinkerLog>,
+}
+/// Represents a linker log.
+#[derive(Serialize, Deserialize)]
+pub struct LinkerLog {
+    pub(crate) dir: String,
+    pub(crate) link: Vec<ResourcePair>,
 }
 
-/// Parses the configuration file at the specified file path and returns the parsed configuration.
-/// If the file does not exist, a new configuration file will be created with default values.
-/// If the file cannot be read or parsed, an error will be returned.
-pub fn parse_config_file(file_path: &str) -> Config {
-    let contents = fs::read_to_string(file_path).unwrap_or_else(|_| {
-        log::warn!("Config file not found, creating one");
-        let _config = Config {
-            resources: Vec::new(),
+impl Config {
+    pub fn new() -> Self {
+        let default_path = utils::get_default_config_path();
+        let contents = fs::read_to_string(default_path);
+        let config: Config = match contents {
+            Ok(contents) => serde_json::from_str(&contents).expect("Failed to parse config file"),
+            Err(_) => {
+                log::warn!("Config file not found, creating one");
+                let config = Config {
+                    resources: Vec::new(),
+                    links: Vec::new(),
+                };
+                config.save();
+                config
+            }
         };
-        write_config_file(file_path, &_config);
-        fs::read_to_string(file_path).expect("Failed to read config file")
-    });
-    let config: Config = serde_json::from_str(&contents).expect("Failed to parse config file");
+        config
+    }
 
-    config
-}
-
-/// Writes the configuration to the specified file path.
-/// If the directory or file does not exist, they will be created.
-/// If the file cannot be written, an error will be returned.
-pub fn write_config_file(file_path: &str, config: &Config) {
-    let contents = serde_json::to_string_pretty(config).expect("Failed to serialize config");
-    fs::write(file_path, contents.clone()).unwrap_or_else(|error| {
-        if error.kind() == ErrorKind::NotFound {
-            log::warn!("Directory not found, creating one");
-            let dir_path = Path::new(file_path).parent().unwrap();
-            fs::create_dir_all(dir_path).expect("Failed to create directory");
-            fs::write(file_path, contents).expect("Failed to write config file");
-        } else {
-            panic!("Failed to write config file");
+    pub fn get_resource(&self, name: &str) -> Option<&ResourcePair> {
+        for resource in self.resources.iter() {
+            if resource.name == name {
+                return Some(resource);
+            }
         }
-    });
-}
+        None
+    }
 
-/// Returns the default configuration file path.
-/// The default path is in the user's home directory under the ".linker" directory.
-pub fn get_default_config_path() -> String {
-    let home_dir = dirs::home_dir().expect("Failed to get home directory");
-    let config_dir = home_dir.join(".linker");
-    let config_file = config_dir.join("config.json");
-    log::info!("Config file path: {}", config_file.to_str().unwrap());
-    config_file.to_str().unwrap().to_string()
-}
+    pub fn remove_link(&mut self, dir: &str) {
+        for (index, link) in self.links.iter().enumerate() {
+            if link.dir == dir {
+                log::warn!("removing soft link for {}", dir);
+                for resource in link.link.iter() {
+                    log::warn!("remove soft link: {}", resource.name);
+                    utils::remove_soft_link(&resource.name);
+                }
+                self.links.remove(index);
+                break;
+            }
+        }
+        self.save();
+    }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn test_write_config_file() {
-        let _config = parse_config_file("config.json");
-        let _resource = ResourceConfig {
-            name: "test".to_string(),
-            path: "test".to_string(),
+    pub fn add_link(&mut self, dir: &str, links: toml::map::Map<std::string::String, toml::Value>) {
+        let mut link = LinkerLog {
+            dir: dir.to_string(),
+            link: Vec::new(),
         };
-        let _config = Config {
-            resources: vec![_resource],
-        };
-        write_config_file("config.json", &_config);
-        let _config = parse_config_file("config.json");
-        assert_eq!(_config.resources.len(), 1);
-        fs::remove_file("config.json").unwrap();
+
+        for (dst, name_orpath) in links.iter() {
+            let items = name_orpath.as_table().unwrap();
+            let resource = self.get_resource(dst);
+            match resource {
+                Some(resource) => {
+                    if items.contains_key("instance") {
+                        let instance = items.get("instance").unwrap().as_bool().unwrap();
+                        if instance {
+                            let instance_name =
+                                resource.name.to_string() + "-" + &utils::generate_random_string(9);
+                            log::info!("Creating instance: {}", instance_name);
+                            let path = Path::new(&resource.path).join(instance_name);
+                            std::fs::create_dir_all(&path).expect("Failed to create directory");
+                            let path = path.to_str().unwrap();
+                            utils::create_soft_link(path, dst);
+                            link.link.push(ResourcePair {
+                                name: dst.to_string(),
+                                path: path.to_string(),
+                            });
+                        } else {
+                            utils::create_soft_link(&resource.path, dst);
+                            link.link.push(ResourcePair {
+                                name: dst.to_string(),
+                                path: resource.path.to_string(),
+                            });
+                        }
+                    }
+                }
+                None => {
+                    for (dst_, res) in items.iter() {
+                        let res = res.as_str().unwrap();
+                        let resource = self.get_resource(res);
+                        match resource {
+                            Some(resource) => {
+                                let path = Path::new(dst).join(dst_);
+                                let path = path.to_str().unwrap();
+                                utils::create_soft_link(&resource.path, path);
+                                link.link.push(ResourcePair {
+                                    name: path.to_string(),
+                                    path: resource.path.to_string(),
+                                });
+                            }
+                            None => {
+                                let path = Path::new(res);
+                                if path.exists() {
+                                    utils::create_soft_link(res, dst_);
+                                    link.link.push(ResourcePair {
+                                        name: dst_.to_string(),
+                                        path: res.to_string(),
+                                    });
+                                } else {
+                                    log::error!("Resource {} not found", res);
+                                    println!("Resource {} not found", res);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.save();
+    }
+
+    pub fn add_resource(&mut self, name: &str, path: &String) {
+        let mut updated = false;
+
+        for resource in self.resources.iter_mut() {
+            if resource.name == name {
+                updated = true;
+                println!(
+                    "Resource {}: {} --> {}",
+                    name,
+                    resource.path,
+                    path.to_string()
+                );
+                resource.path = path.to_string();
+                break;
+            }
+        }
+
+        if !updated {
+            let resource = ResourcePair {
+                name: name.to_string(),
+                path: path.to_string(),
+            };
+            self.resources.push(resource);
+        }
+        self.save();
+    }
+
+    pub fn remove_resource(&mut self, name: Option<&str>, all: bool) {
+        if all {
+            log::info!("Trying to remove all resources");
+            self.resources.clear();
+            println!("All resources removed");
+        } else {
+            match name {
+                Some(name) => {
+                    for (index, resource) in self.resources.iter().enumerate() {
+                        if resource.name == name {
+                            log::info!("Trying to remove resource {}", name);
+                            self.resources.remove(index);
+                            println!("Resource {} removed", name);
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    log::error!("Please specify a resource name");
+                    println!("Please specify a resource name");
+                }
+            }
+        }
+        self.save();
+    }
+
+    pub fn save(&self) {
+        let default_path = utils::get_default_config_path();
+        let contents = serde_json::to_string_pretty(&self).expect("Failed to serialize config");
+        fs::write(default_path.clone(), contents.clone()).unwrap_or_else(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                log::warn!("Directory not found, creating one");
+                let dir_path = Path::new(&default_path).parent().unwrap();
+                fs::create_dir_all(dir_path).expect("Failed to create directory");
+                fs::write(default_path, contents).expect("Failed to write config file");
+            } else {
+                panic!("Failed to write config file");
+            }
+        });
     }
 }

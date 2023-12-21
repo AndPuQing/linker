@@ -1,0 +1,14 @@
+# example config file
+[resource] # force
+
+
+[resource.checkpoint]
+instance = true
+
+[resource.dataset]
+cityscapes = "cityscapes"
+
+# or
+# [resource]
+# checkpoint = { instance = true }
+# dataset = { cityscapes = "cityscapes" }

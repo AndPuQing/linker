@@ -1,8 +1,8 @@
-use std::path;
-
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::Verbosity;
 mod config;
+mod resource;
+mod utils;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, name = "DL Resource Manager")]
@@ -16,9 +16,12 @@ struct Cli {
 }
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// LinkStart links resources to the current directory
+    LinkStart,
+
     /// list soft links on current directory
     /// or on the path provided
-    List(ListArgs),
+    List,
 
     /// add a new resource
     /// or update an existing one
@@ -27,12 +30,9 @@ enum Commands {
     /// remove a resource
     /// or all resources
     Remove(RemoveArgs),
-}
 
-#[derive(Args, Debug)]
-struct ListArgs {
-    /// path to list soft links
-    path: Option<String>,
+    /// initialize the configuration file
+    Init,
 }
 
 #[derive(Args, Debug)]
@@ -43,7 +43,7 @@ struct AddArgs {
 
     #[arg(required = true)]
     /// path to the resource
-    path: path::PathBuf,
+    path: String,
 }
 
 #[derive(Args, Debug)]
@@ -61,82 +61,57 @@ fn main() {
     env_logger::Builder::new()
         .filter_level(cli.verbose.log_level_filter())
         .init();
-    let _default_config_path = config::get_default_config_path();
     match &cli.command {
-        Some(Commands::List(name)) => match name.path {
-            Some(ref _name) => {
-                println!("{}", _name);
-            }
-            None => {
-                log::info!("No path provided, listing current directory");
-            }
-        },
-        Some(Commands::Add(name)) => {
-            log::info!(
-                "Trying to add resource {} at {}",
-                name.name,
-                name.path.display()
-            );
-            let mut _config = config::parse_config_file(&_default_config_path);
-            let mut updated = false;
-
-            for resource in _config.resources.iter_mut() {
-                if resource.name == name.name {
-                    updated = true;
-                    println!(
-                        "Resource {}: {} --> {}",
-                        name.name,
-                        resource.path,
-                        name.path.to_str().unwrap()
-                    );
-                    resource.path = name.path.to_str().unwrap().to_string();
-                    break;
+        Some(Commands::LinkStart) => {
+            let resource = resource::Resource::new();
+            let mut config = config::Config::new();
+            let current_dir = std::env::current_dir().expect("Failed to get current directory");
+            let current_dir = current_dir.to_str().unwrap().to_string();
+            config.remove_link(&current_dir);
+            config.add_link(&current_dir, resource.resource);
+        }
+        Some(Commands::List) => {
+            let linker_logs = config::Config::new().links;
+            let current_dir = std::env::current_dir().expect("Failed to get current directory");
+            let current_dir = current_dir.to_str().unwrap().to_string();
+            let mut found = false;
+            for linker_log in linker_logs.iter() {
+                if linker_log.dir == current_dir {
+                    found = true;
+                    for resource in linker_log.link.iter() {
+                        println!("{} --> {}", resource.name, resource.path);
+                    }
                 }
             }
-
-            if !updated {
-                let _resource = config::ResourceConfig {
-                    name: name.name.to_string(),
-                    path: name.path.to_str().unwrap().to_string(),
-                };
-                _config.resources.push(_resource);
+            if !found {
+                println!("No resource found! May be you should run `linker linkstart`");
             }
-
-            config::write_config_file(&_default_config_path, &_config);
+        }
+        Some(Commands::Add(name)) => {
+            let mut config = config::Config::new();
+            config.add_resource(&name.name, &name.path);
         }
         Some(Commands::Remove(name)) => match name.name {
             Some(ref _name) => {
-                log::info!("Trying to remove resource {}", _name);
-                let mut _config = config::parse_config_file(&_default_config_path);
-                let mut updated = false;
-
-                for (index, resource) in _config.resources.iter().enumerate() {
-                    if resource.name == *_name {
-                        updated = true;
-                        println!("Resource {} removed", _name);
-                        _config.resources.remove(index);
-                        break;
-                    }
-                }
-
-                if !updated {
-                    println!("Resource {} not found", _name);
-                }
-
-                config::write_config_file(&_default_config_path, &_config);
+                let mut config = config::Config::new();
+                config.remove_resource(Some(&_name), false);
             }
             None => {
                 if name.all {
-                    log::info!("Trying to remove all resources");
-                    let _config = config::Config {
-                        resources: Vec::new(),
-                    };
-                    config::write_config_file(&_default_config_path, &_config);
-                } else {
-                    log::info!("No resource name provided, nothing to remove");
+                    let mut config = config::Config::new();
+                    config.remove_resource(None, true);
                 }
             }
         },
+        Some(Commands::Init) => {
+            let resource = resource::Resource::new();
+            if resource.resource.len() > 0 {
+                log::info!("Resource have {} entries", resource.resource.len());
+                println!("File resource.toml exists, nothing to initialize");
+            } else {
+                println!("File resource.toml created")
+            }
+        }
         None => {}
     }
 }
