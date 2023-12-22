@@ -30,7 +30,7 @@ pub fn create_soft_link(src: &str, dst: &str) {
     // platform check
     #[cfg(target_os = "windows")]
     if !dst.exists() {
-        std::os::windows::fs::symlink_file(src, dst).expect("Failed to create soft link");
+        std::os::windows::fs::symlink_dir(src, dst).expect("Failed to create soft link");
     }
 
     #[cfg(target_os = "macos")]
