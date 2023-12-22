@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["PuQing <me@puqing.work>"]
 description = "Manage deep learning training resources"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.4.11", features = ["derive"] }
