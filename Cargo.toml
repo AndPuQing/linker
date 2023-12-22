@@ -1,6 +1,6 @@
 [package]
 name = "linker"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["PuQing <me@puqing.work>"]
 description = "Manage deep learning training resources"
